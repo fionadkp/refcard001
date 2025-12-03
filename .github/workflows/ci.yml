@@ -1,35 +1,69 @@
 name: CI/CD RefCard01
 
+# Trigger: Bei Push oder Pull-Request auf main
 on:
   push:
+    branches: [ master ]
+  pull_request:
     branches: [ master ]
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        java-version: [ '17', '21' ]  # Testet Java 17 & 21 parallel
     steps:
-      - name: Checkout repo
+      # --- 1. Code auschecken ---
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      # --- 2. Maven Cache ---
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ runner.os }}-${{ matrix.java-version }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-${{ matrix.java-version }}-
+            maven-${{ runner.os }}-
+
+      # --- 3. Java einrichten ---
+      - name: Set up Java ${{ matrix.java-version }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ matrix.java-version }}
           cache: maven
 
+      # --- 4. Build & Test ---
       - name: Build & Test
-        run: mvn -B -ntp verify
+        run: mvn -B -ntp clean verify
 
-      - name: Login to Docker Hub
+      # --- 5. Artefakte hochladen ---
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar-${{ matrix.java-version }}
+          path: target/demo-ci-project-1.0-SNAPSHOT.jar
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.java-version }}
+          path: target/surefire-reports/
+
+      # --- 6. Docker Image bauen ---
+      - name: Build Docker Image
+        run: docker build -t ${{ secrets.DOCKERHUB_USER }}/refcard01:${{ github.sha }} .
+
+      # --- 7. Docker Hub Login ---
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build image
-        run: docker build -t ${{ secrets.DOCKERHUB_USER }}/refcard01:latest .
-
-      - name: Push image
-        run: docker push ${{ secrets.DOCKERHUB_USER }}/refcard01:latest
+      # --- 8. Docker Image pushen ---
+      - name: Push Docker Image
+        run: docker push ${{ secrets.DOCKERHUB_USER }}/refcard01:${{ github.sha }}
