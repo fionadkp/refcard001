@@ -36,16 +36,24 @@ jobs:
           java-version: ${{ matrix.java-version }}
           cache: maven
 
-      # --- 4. Build & Test ---
+      # --- 4. Build & Test (inkl. JAR bauen) ---
       - name: Build & Test
-        run: mvn -B -ntp clean verify
+        run: mvn -B -ntp clean package
+
+      # --- 4b. Optional: Spring Boot Repackage ---
+      # Falls du Spring Boot nutzt und ausführbares JAR brauchst
+      - name: Spring Boot Repackage
+        run: mvn -B spring-boot:repackage || echo "Not a Spring Boot project"
 
       # --- 5. Artefakte hochladen ---
+      - name: List target folder
+        run: ls -la target/
+
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
           name: app-jar-${{ matrix.java-version }}
-          path: target/demo-ci-project-1.0-SNAPSHOT.jar
+          path: target/*.jar  # Wildcard sorgt dafür, dass das JAR gefunden wird
 
       - name: Upload test reports
         uses: actions/upload-artifact@v4
